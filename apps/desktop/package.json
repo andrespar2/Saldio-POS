@@ -1,0 +1,62 @@
+{
+  "name": "@saldio/desktop",
+  "version": "0.1.0-beta.1",
+  "private": true,
+  "description": "Aplicación de escritorio Saldio POS",
+  "author": "Saldio POS",
+  "license": "UNLICENSED",
+  "main": "main.cjs",
+  "scripts": {
+    "prepare:web": "node scripts/prepare.cjs",
+    "build": "node scripts/prepare.cjs",
+    "start": "electron .",
+    "dist": "node scripts/prepare.cjs && electron-builder --win nsis --x64"
+  },
+  "devDependencies": {
+    "electron": "45.1.0",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "com.saldio.pos",
+    "productName": "Saldio POS",
+    "copyright": "Copyright © 2026 Saldio POS",
+    "asar": true,
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "web/**/*",
+      "build/icon.ico",
+      "build/icon.png",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "Saldio-POS-Setup-${version}-x64.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Saldio POS",
+      "uninstallDisplayName": "Saldio POS",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
+    },
+    "publish": null
+  }
+}

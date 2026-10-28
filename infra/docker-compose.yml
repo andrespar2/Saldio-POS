@@ -1,0 +1,75 @@
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: saldio
+      POSTGRES_USER: saldio
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saldio -d saldio"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://saldio:${POSTGRES_PASSWORD}@db:5432/saldio?schema=public
+      DIRECT_URL: postgresql://saldio:${POSTGRES_PASSWORD}@db:5432/saldio?schema=public
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Defina JWT_ACCESS_SECRET}
+      FILE_SIGNING_SECRET: ${FILE_SIGNING_SECRET:?Defina FILE_SIGNING_SECRET}
+      CONFIG_ENCRYPTION_KEY: ${CONFIG_ENCRYPTION_KEY:?Defina CONFIG_ENCRYPTION_KEY}
+      WEB_PUBLIC_URL: ${WEB_PUBLIC_URL:?Defina WEB_PUBLIC_URL}
+      API_PUBLIC_URL: ${API_PUBLIC_URL:?Defina API_PUBLIC_URL}
+      CORS_ORIGINS: ${CORS_ORIGINS:?Defina CORS_ORIGINS}
+      STORAGE_DIR: /data/uploads
+      BOOTSTRAP_ENABLED: ${BOOTSTRAP_ENABLED:-false}
+      AUTO_APPROVE_STORES: ${AUTO_APPROVE_STORES:-false}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-Saldio POS <no-reply@example.invalid>}
+      PAYMENTS_WEBHOOK_SECRET: ${PAYMENTS_WEBHOOK_SECRET:-}
+      PAYMENTS_MODE: ${PAYMENTS_MODE:-test}
+      FISCAL_MODE: ${FISCAL_MODE:-test}
+      FISCAL_PROVIDER: ${FISCAL_PROVIDER:-disabled}
+    volumes:
+      - uploads:/data/uploads
+    networks:
+      - internal
+    expose:
+      - "3000"
+
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+    networks:
+      - internal
+
+volumes:
+  pgdata:
+  uploads:
+
+networks:
+  internal:
+    driver: bridge
