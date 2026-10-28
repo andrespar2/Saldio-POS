@@ -1,0 +1,1382 @@
+// Esquema de datos de Saldio POS.
+// Regla: toda tabla de negocio lleva tenantId y claves foraneas compuestas
+// (id, tenantId) para impedir relaciones entre empresas distintas.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum BusinessType {
+  SUPERMARKET
+  RESTAURANT
+  CLOTHING
+  HARDWARE
+  GENERAL
+}
+
+enum StoreStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+
+enum PlatformRole {
+  SUPER_ADMIN
+  ADMIN
+  SUPPORT
+}
+
+enum TenantRole {
+  OWNER
+  ADMIN
+  CASHIER
+  INVENTORY
+  ACCOUNTANT
+  WAITER
+  KITCHEN
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum PlanStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum ProductType {
+  SIMPLE
+  VARIANT
+  WEIGHTED
+  SERVICE
+  RECIPE
+}
+
+enum MovementType {
+  PURCHASE_RECEIPT
+  SALE
+  SALE_CANCELLED
+  RETURN
+  ADJUSTMENT
+  TRANSFER_IN
+  TRANSFER_OUT
+  WASTE
+  INITIAL
+}
+
+enum PurchaseStatus {
+  DRAFT
+  ORDERED
+  PARTIAL
+  RECEIVED
+  CANCELLED
+}
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  CONVERTED
+  EXPIRED
+}
+
+enum SaleStatus {
+  CONFIRMED
+  VOIDED
+  PARTIALLY_REFUNDED
+  REFUNDED
+}
+
+enum SaleType {
+  SALE
+  CREDIT
+  QUOTE
+  RESTAURANT
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+  CREDIT
+  OTHER
+}
+
+enum PaymentStatus {
+  APPROVED
+  PENDING
+  REJECTED
+  REFUNDED
+}
+
+enum ReturnType {
+  PARTIAL
+  TOTAL
+}
+
+enum CashSessionStatus {
+  OPEN
+  CLOSED
+}
+
+enum CashMovementType {
+  OPENING
+  SALE
+  REFUND
+  EXPENSE
+  DEPOSIT
+  WITHDRAWAL
+  ADJUSTMENT
+}
+
+enum ReceivableStatus {
+  OPEN
+  PARTIAL
+  PAID
+  WRITTEN_OFF
+}
+
+enum TableStatus {
+  FREE
+  OCCUPIED
+  RESERVED
+}
+
+enum RestaurantOrderType {
+  DINE_IN
+  TAKEAWAY
+}
+
+enum RestaurantOrderStatus {
+  OPEN
+  SENT
+  PREPARING
+  READY
+  SERVED
+  PAID
+  CANCELLED
+}
+
+enum OrderItemStatus {
+  PENDING
+  PREPARING
+  READY
+  SERVED
+  CANCELLED
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  INCOME
+  EXPENSE
+}
+
+enum AccountingPeriodStatus {
+  OPEN
+  CLOSED
+}
+
+enum JournalStatus {
+  POSTED
+  REVERSED
+}
+
+enum FiscalDocumentStatus {
+  PENDING
+  TEST_SENT
+  ACCEPTED
+  REJECTED
+  ERROR
+  DISABLED
+}
+
+enum IntegrationMode {
+  TEST
+  PRODUCTION
+}
+
+enum IntegrationStatus {
+  NOT_CONFIGURED
+  CONFIGURED
+  ERROR
+}
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum FileVisibility {
+  PRIVATE
+  PUBLIC_LOGO
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+}
+
+enum SupportStatus {
+  ACTIVE
+  EXPIRED
+  REVOKED
+}
+
+model User {
+  id                   String        @id @default(uuid())
+  username             String
+  usernameLower        String        @unique
+  email                String?
+  emailLower           String?       @unique
+  fullName             String
+  phone                String?
+  passwordHash         String
+  isPlatformAdmin      Boolean       @default(false)
+  platformRole         PlatformRole?
+  platformPermissions  String[]      @default([])
+  status               UserStatus    @default(ACTIVE)
+  mustChangePassword   Boolean       @default(false)
+  passwordChangedAt    DateTime?
+  failedLoginAttempts  Int           @default(0)
+  lockedUntil          DateTime?
+  lastLoginAt          DateTime?
+  preferences          Json          @default("{}")
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  memberships          Membership[]
+  sessions             Session[]
+  passwordResets       PasswordResetToken[]
+  auditLogs            AdminAudit[]
+  supportSessions      SupportSession[]
+
+  @@index([emailLower])
+}
+
+model Session {
+  id               String    @id @default(uuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId         String?
+  membershipId     String?
+  refreshTokenHash String    @unique
+  userAgent        String?
+  ip               String?
+  supportSessionId String?
+  createdAt        DateTime  @default(now())
+  lastUsedAt       DateTime  @default(now())
+  expiresAt        DateTime
+  revokedAt        DateTime?
+
+  @@index([userId, revokedAt])
+  @@index([tenantId])
+}
+
+model Membership {
+  id          String     @id @default(uuid())
+  tenantId    String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  store       Store      @relation(fields: [tenantId], references: [id])
+  userId      String
+  role        TenantRole @default(CASHIER)
+  permissions String[]   @default([])
+  active      Boolean    @default(true)
+  branchId    String?
+  branch      Branch?    @relation(fields: [branchId, tenantId], references: [id, tenantId])
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@unique([tenantId, userId])
+  @@unique([id, tenantId])
+  @@index([userId])
+  @@index([tenantId, role])
+}
+
+model Plan {
+  id          String     @id @default(uuid())
+  code        String     @unique
+  name        String
+  description String?
+  price       Decimal    @default(0) @db.Decimal(14, 2)
+  currency    String     @default("COP")
+  modules     String[]   @default([])
+  limits      Json       @default("{}")
+  status      PlanStatus @default(ACTIVE)
+  version     Int        @default(1)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  stores      Store[]
+}
+
+model Addon {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  name      String
+  module    String
+  price     Decimal  @default(0) @db.Decimal(14, 2)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model Store {
+  id                 String          @id @default(uuid())
+  name               String
+  legalName          String?
+  taxType            String?
+  taxId              String?
+  ownerName          String
+  email              String
+  emailLower         String
+  phone              String
+  address            String
+  city               String
+  businessType       BusinessType    @default(GENERAL)
+  status             StoreStatus     @default(PENDING)
+  planId             String?
+  plan               Plan?           @relation(fields: [planId], references: [id])
+  contractedModules  String[]        @default([])
+  enabledModules     String[]        @default([])
+  limits             Json            @default("{}")
+  logoKey            String?
+  termsAcceptedAt    DateTime?
+  approvedAt         DateTime?
+  suspendedAt        DateTime?
+  suspensionEndsAt   DateTime?
+  suspensionReason   String?
+  disabledAt         DateTime?
+  disabledReason     String?
+  onboardingProgress Json            @default("{}")
+  onboardingDoneAt   DateTime?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  memberships        Membership[]
+
+  @@unique([emailLower])
+  @@unique([taxId])
+  @@index([status])
+  @@index([businessType])
+  @@index([name])
+}
+
+model StoreStatusHistory {
+  id        String      @id @default(uuid())
+  tenantId  String
+  from      StoreStatus
+  to        StoreStatus
+  reason    String
+  actorId   String?
+  endsAt    DateTime?
+  createdAt DateTime    @default(now())
+
+  @@index([tenantId, createdAt])
+}
+
+model AdminAudit {
+  id           String   @id @default(uuid())
+  actorUserId  String?
+  actor        User?    @relation(fields: [actorUserId], references: [id])
+  action       String
+  targetType   String
+  targetId     String?
+  tenantId     String?
+  reason       String?
+  before       Json?
+  after        Json?
+  ip           String?
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([tenantId, createdAt])
+}
+
+model SupportSession {
+  id          String        @id @default(uuid())
+  adminUserId String
+  admin       User          @relation(fields: [adminUserId], references: [id])
+  tenantId    String
+  reason      String
+  readOnly    Boolean       @default(true)
+  status      SupportStatus @default(ACTIVE)
+  createdAt   DateTime      @default(now())
+  expiresAt   DateTime
+  revokedAt   DateTime?
+
+  @@index([tenantId, status])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, expiresAt])
+}
+
+model EmailOutbox {
+  id        String      @id @default(uuid())
+  to        String
+  subject   String
+  body      String
+  status    EmailStatus @default(PENDING)
+  error     String?
+  createdAt DateTime    @default(now())
+  sentAt    DateTime?
+
+  @@index([status, createdAt])
+}
+
+model Job {
+  id        String    @id @default(uuid())
+  type      String
+  tenantId  String?
+  payload   Json      @default("{}")
+  status    JobStatus @default(PENDING)
+  attempts  Int       @default(0)
+  maxAttempts Int     @default(5)
+  runAt     DateTime  @default(now())
+  lockedAt  DateTime?
+  lastError String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([status, runAt])
+  @@index([tenantId, status])
+}
+
+model FileObject {
+  id           String         @id @default(uuid())
+  tenantId     String
+  key          String         @unique
+  originalName String
+  mime         String
+  size         Int
+  sha256       String
+  visibility   FileVisibility @default(PRIVATE)
+  createdById  String?
+  createdAt    DateTime       @default(now())
+
+  @@index([tenantId, createdAt])
+}
+
+model IntegrationConfig {
+  id              String            @id @default(uuid())
+  tenantId        String
+  kind            String
+  provider        String
+  mode            IntegrationMode   @default(TEST)
+  status          IntegrationStatus @default(NOT_CONFIGURED)
+  encryptedConfig String?
+  lastError       String?
+  updatedAt       DateTime          @updatedAt
+  createdAt       DateTime          @default(now())
+
+  @@unique([tenantId, kind, provider])
+}
+
+model IntegrationLog {
+  id        String   @id @default(uuid())
+  tenantId  String?
+  kind      String
+  provider  String
+  status    String
+  message   String
+  detail    Json?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+}
+
+model PaymentEvent {
+  id            String    @id @default(uuid())
+  provider      String
+  eventId       String
+  eventType     String
+  tenantId      String?
+  payload       Json
+  signatureOk   Boolean   @default(false)
+  processedAt   DateTime?
+  result        String?
+  createdAt     DateTime  @default(now())
+
+  @@unique([provider, eventId])
+}
+
+model StorePaymentAccount {
+  id           String   @id @default(uuid())
+  tenantId     String
+  provider     String
+  accountRef   String
+  currency     String   @default("COP")
+  mode         IntegrationMode @default(TEST)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@unique([tenantId, provider, accountRef])
+}
+
+model Subscription {
+  id             String             @id @default(uuid())
+  tenantId       String             @unique
+  planId         String?
+  status         SubscriptionStatus @default(TRIAL)
+  currentPeriodEnd DateTime?
+  providerRef    String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Operacion de tienda
+// ---------------------------------------------------------------------------
+
+model Branch {
+  id        String       @id @default(uuid())
+  tenantId  String
+  name      String
+  code      String
+  address   String
+  city      String
+  phone     String?
+  active    Boolean      @default(true)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  warehouses Warehouse[]
+  registers Register[]
+  employees Employee[]
+  memberships Membership[]
+  restaurantAreas RestaurantArea[]
+  purchases Purchase[]
+  sales     Sale[]
+  expenses  Expense[]
+
+  @@unique([tenantId, code])
+  @@unique([id, tenantId])
+  @@index([tenantId])
+}
+
+model Warehouse {
+  id        String   @id @default(uuid())
+  tenantId  String
+  branchId  String
+  branch    Branch   @relation(fields: [branchId, tenantId], references: [id, tenantId])
+  name      String
+  code      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  stock     StockLevel[]
+  movements InventoryMovement[]
+  purchases Purchase[]
+
+  @@unique([tenantId, code])
+  @@unique([id, tenantId])
+  @@index([tenantId, branchId])
+}
+
+model Register {
+  id        String   @id @default(uuid())
+  tenantId  String
+  branchId  String
+  branch    Branch   @relation(fields: [branchId, tenantId], references: [id, tenantId])
+  name      String
+  code      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  cashSessions CashSession[]
+  sales     Sale[]
+
+  @@unique([tenantId, code])
+  @@unique([id, tenantId])
+  @@index([tenantId, branchId])
+}
+
+model Employee {
+  id        String     @id @default(uuid())
+  tenantId  String
+  branchId  String?
+  branch    Branch?    @relation(fields: [branchId, tenantId], references: [id, tenantId])
+  name      String
+  document  String?
+  phone     String?
+  role      TenantRole @default(CASHIER)
+  userId    String?
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@unique([id, tenantId])
+  @@index([tenantId, active])
+}
+
+model Tax {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  code      String
+  rate      Decimal  @default(0) @db.Decimal(7, 4)
+  active    Boolean  @default(true)
+  products  Product[]
+
+  @@unique([tenantId, code])
+  @@unique([id, tenantId])
+}
+
+model Unit {
+  id            String   @id @default(uuid())
+  tenantId      String
+  name          String
+  code          String
+  allowDecimal  Boolean  @default(false)
+  baseUnitId    String?
+  conversionFactor Decimal @default(1) @db.Decimal(18, 6)
+  active        Boolean  @default(true)
+  products      Product[]
+
+  @@unique([tenantId, code])
+  @@unique([id, tenantId])
+}
+
+model Category {
+  id        String     @id @default(uuid())
+  tenantId  String
+  name      String
+  parentId  String?
+  sort      Int        @default(0)
+  active    Boolean    @default(true)
+  products  Product[]
+  createdAt DateTime   @default(now())
+
+  @@unique([id, tenantId])
+  @@index([tenantId, active])
+}
+
+model Product {
+  id              String      @id @default(uuid())
+  tenantId        String
+  sku             String
+  barcode         String?
+  name            String
+  description     String?
+  type            ProductType @default(SIMPLE)
+  categoryId      String?
+  category        Category?   @relation(fields: [categoryId, tenantId], references: [id, tenantId])
+  taxId           String?
+  tax             Tax?        @relation(fields: [taxId, tenantId], references: [id, tenantId])
+  unitId          String
+  unit            Unit        @relation(fields: [unitId, tenantId], references: [id, tenantId])
+  price           Decimal     @default(0) @db.Decimal(14, 4)
+  wholesalePrice  Decimal?    @db.Decimal(14, 4)
+  wholesaleMinQty Decimal     @default(6) @db.Decimal(14, 3)
+  cost            Decimal     @default(0) @db.Decimal(14, 4)
+  trackInventory  Boolean     @default(true)
+  lotTracking     Boolean     @default(false)
+  reorderPoint    Decimal?    @db.Decimal(14, 3)
+  active          Boolean     @default(true)
+  metadata        Json        @default("{}")
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  variants        ProductVariant[]
+  stock           StockLevel[]
+  movements       InventoryMovement[]
+  purchaseLines   PurchaseLine[]
+  saleLines       SaleLine[]
+  quoteLines      QuoteLine[]
+  recipes         RecipeIngredient[] @relation("ProductRecipes")
+  usedInRecipes   RecipeIngredient[] @relation("IngredientRecipes")
+  orderItems      OrderItem[]
+
+  @@unique([tenantId, sku])
+  @@unique([tenantId, barcode])
+  @@unique([id, tenantId])
+  @@index([tenantId, name])
+  @@index([tenantId, active])
+}
+
+model ProductVariant {
+  id            String   @id @default(uuid())
+  tenantId      String
+  productId     String
+  product       Product  @relation(fields: [productId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  sku           String
+  barcode       String?
+  size          String?
+  color         String?
+  priceOverride Decimal? @db.Decimal(14, 4)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  stock         StockLevel[]
+  saleLines     SaleLine[]
+  orderItems    OrderItem[]
+
+  @@unique([tenantId, sku])
+  @@unique([tenantId, barcode])
+  @@unique([id, tenantId])
+  @@index([tenantId, productId])
+}
+
+model StockLevel {
+  id          String   @id @default(uuid())
+  tenantId    String
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId, tenantId], references: [id, tenantId])
+  productId   String
+  product     Product  @relation(fields: [productId, tenantId], references: [id, tenantId])
+  variantId   String?
+  variant     ProductVariant? @relation(fields: [variantId, tenantId], references: [id, tenantId])
+  stockKey    String
+  lotKey      String   @default("")
+  lotCode     String?
+  expiresAt   DateTime?
+  quantity    Decimal  @default(0) @db.Decimal(16, 3)
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, warehouseId, stockKey])
+  @@index([tenantId, productId])
+}
+
+model InventoryMovement {
+  id            String       @id @default(uuid())
+  tenantId      String
+  warehouseId   String
+  warehouse     Warehouse    @relation(fields: [warehouseId, tenantId], references: [id, tenantId])
+  productId     String
+  product       Product      @relation(fields: [productId, tenantId], references: [id, tenantId])
+  variantId     String?
+  lotCode       String?
+  type          MovementType
+  quantity      Decimal      @db.Decimal(16, 3)
+  unitCost      Decimal      @default(0) @db.Decimal(14, 4)
+  referenceType String
+  referenceId   String?
+  reason        String?
+  userId        String?
+  createdAt     DateTime     @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, productId, createdAt])
+  @@index([tenantId, referenceType, referenceId])
+}
+
+model Customer {
+  id          String   @id @default(uuid())
+  tenantId    String
+  name        String
+  taxId       String?
+  phone       String?
+  email       String?
+  address     String?
+  creditLimit Decimal  @default(0) @db.Decimal(14, 2)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  sales       Sale[]
+  receivables Receivable[]
+  quotes      Quote[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, name])
+}
+
+model Supplier {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  taxId     String?
+  contact   String?
+  phone     String?
+  email     String?
+  address   String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  purchases Purchase[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, name])
+}
+
+model Purchase {
+  id          String         @id @default(uuid())
+  tenantId    String
+  branchId    String
+  branch      Branch         @relation(fields: [branchId, tenantId], references: [id, tenantId])
+  supplierId  String
+  supplier    Supplier       @relation(fields: [supplierId, tenantId], references: [id, tenantId])
+  warehouseId String
+  warehouse   Warehouse?     @relation(fields: [warehouseId, tenantId], references: [id, tenantId])
+  number      String
+  status      PurchaseStatus @default(DRAFT)
+  subtotal    Decimal        @default(0) @db.Decimal(14, 2)
+  tax         Decimal        @default(0) @db.Decimal(14, 2)
+  total       Decimal        @default(0) @db.Decimal(14, 2)
+  notes       String?
+  createdById String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  receivedAt  DateTime?
+  lines       PurchaseLine[]
+
+  @@unique([tenantId, number])
+  @@unique([id, tenantId])
+  @@index([tenantId, status])
+}
+
+model PurchaseLine {
+  id          String   @id @default(uuid())
+  tenantId    String
+  purchaseId  String
+  purchase    Purchase @relation(fields: [purchaseId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  productId   String
+  product     Product  @relation(fields: [productId, tenantId], references: [id, tenantId])
+  description String
+  quantity    Decimal  @db.Decimal(16, 3)
+  receivedQty Decimal  @default(0) @db.Decimal(16, 3)
+  unitCost    Decimal  @db.Decimal(14, 4)
+  taxRate     Decimal  @default(0) @db.Decimal(7, 4)
+  total       Decimal  @db.Decimal(14, 2)
+
+  @@unique([id, tenantId])
+  @@index([tenantId, purchaseId])
+}
+
+model Quote {
+  id          String      @id @default(uuid())
+  tenantId    String
+  customerId  String?
+  customer    Customer?   @relation(fields: [customerId, tenantId], references: [id, tenantId])
+  number      String
+  status      QuoteStatus @default(DRAFT)
+  validUntil  DateTime?
+  subtotal    Decimal     @default(0) @db.Decimal(14, 2)
+  tax         Decimal     @default(0) @db.Decimal(14, 2)
+  total       Decimal     @default(0) @db.Decimal(14, 2)
+  saleId      String?
+  notes       String?
+  createdById String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  lines       QuoteLine[]
+
+  @@unique([tenantId, number])
+  @@unique([id, tenantId])
+  @@index([tenantId, status])
+}
+
+model QuoteLine {
+  id          String  @id @default(uuid())
+  tenantId    String
+  quoteId     String
+  quote       Quote   @relation(fields: [quoteId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  productId   String
+  product     Product @relation(fields: [productId, tenantId], references: [id, tenantId])
+  description String
+  quantity    Decimal @db.Decimal(16, 3)
+  unitPrice   Decimal @db.Decimal(14, 4)
+  discount    Decimal @default(0) @db.Decimal(14, 2)
+  taxRate     Decimal @default(0) @db.Decimal(7, 4)
+  total       Decimal @db.Decimal(14, 2)
+
+  @@unique([id, tenantId])
+}
+
+model Sale {
+  id              String      @id @default(uuid())
+  tenantId        String
+  branchId        String
+  branch          Branch      @relation(fields: [branchId, tenantId], references: [id, tenantId])
+  registerId      String?
+  register        Register?   @relation(fields: [registerId, tenantId], references: [id, tenantId])
+  cashSessionId   String?
+  cashSession     CashSession? @relation(fields: [cashSessionId, tenantId], references: [id, tenantId])
+  customerId      String?
+  customer        Customer?   @relation(fields: [customerId, tenantId], references: [id, tenantId])
+  number          String
+  status          SaleStatus  @default(CONFIRMED)
+  type            SaleType    @default(SALE)
+  subtotal        Decimal     @default(0) @db.Decimal(14, 2)
+  discount        Decimal     @default(0) @db.Decimal(14, 2)
+  tax             Decimal     @default(0) @db.Decimal(14, 2)
+  total           Decimal     @db.Decimal(14, 2)
+  paid            Decimal     @default(0) @db.Decimal(14, 2)
+  balance         Decimal     @default(0) @db.Decimal(14, 2)
+  tip             Decimal     @default(0) @db.Decimal(14, 2)
+  currency        String      @default("COP")
+  notes           String?
+  soldById        String?
+  idempotencyKey  String?
+  receiptSnapshot Json?
+  fiscalStatus    String      @default("NOT_CONFIGURED")
+  restaurantOrderId String?
+  printCount      Int         @default(0)
+  createdAt       DateTime    @default(now())
+  confirmedAt     DateTime?
+  lines           SaleLine[]
+  payments        Payment[]
+  returns         Return[]
+  receivable      Receivable?
+  fiscalDocuments FiscalDocument[]
+
+  @@unique([tenantId, number])
+  @@unique([id, tenantId])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, status])
+  @@index([tenantId, idempotencyKey])
+}
+
+model SaleLine {
+  id            String   @id @default(uuid())
+  tenantId      String
+  saleId        String
+  sale          Sale     @relation(fields: [saleId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  productId     String?
+  product       Product? @relation(fields: [productId, tenantId], references: [id, tenantId])
+  variantId     String?
+  variant       ProductVariant? @relation(fields: [variantId, tenantId], references: [id, tenantId])
+  warehouseId   String?
+  description   String
+  sku           String?
+  quantity      Decimal  @db.Decimal(16, 3)
+  unitPrice     Decimal  @db.Decimal(14, 4)
+  discount      Decimal  @default(0) @db.Decimal(14, 2)
+  taxRate       Decimal  @default(0) @db.Decimal(7, 4)
+  taxAmount     Decimal  @default(0) @db.Decimal(14, 2)
+  lineTotal     Decimal  @db.Decimal(14, 2)
+  unitCost      Decimal  @default(0) @db.Decimal(14, 4)
+  trackInventory Boolean @default(true)
+  recipeSnapshot Json?
+  returnLines   ReturnLine[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, saleId])
+  @@index([tenantId, productId])
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  tenantId      String
+  saleId        String?
+  sale          Sale?         @relation(fields: [saleId, tenantId], references: [id, tenantId])
+  receivableId  String?
+  method        PaymentMethod
+  status        PaymentStatus @default(APPROVED)
+  amount        Decimal       @db.Decimal(14, 2)
+  tip           Decimal       @default(0) @db.Decimal(14, 2)
+  received      Decimal?      @db.Decimal(14, 2)
+  change        Decimal?      @db.Decimal(14, 2)
+  reference     String?
+  providerEventId String?
+  createdById   String?
+  createdAt     DateTime      @default(now())
+
+  @@unique([id, tenantId])
+  @@index([tenantId, saleId])
+  @@index([tenantId, createdAt])
+}
+
+model Return {
+  id           String     @id @default(uuid())
+  tenantId     String
+  saleId       String
+  sale         Sale       @relation(fields: [saleId, tenantId], references: [id, tenantId])
+  number       String
+  type         ReturnType
+  reason       String
+  restock      Boolean    @default(true)
+  subtotal     Decimal    @default(0) @db.Decimal(14, 2)
+  tax          Decimal    @default(0) @db.Decimal(14, 2)
+  total        Decimal    @default(0) @db.Decimal(14, 2)
+  refundMethod PaymentMethod @default(CASH)
+  waste        Boolean    @default(false)
+  createdById  String?
+  createdAt    DateTime   @default(now())
+  lines        ReturnLine[]
+
+  @@unique([tenantId, number])
+  @@unique([id, tenantId])
+  @@index([tenantId, saleId])
+}
+
+model ReturnLine {
+  id         String  @id @default(uuid())
+  tenantId   String
+  returnId   String
+  return     Return  @relation(fields: [returnId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  saleLineId String
+  saleLine   SaleLine @relation(fields: [saleLineId, tenantId], references: [id, tenantId])
+  quantity   Decimal @db.Decimal(16, 3)
+  unitPrice  Decimal @db.Decimal(14, 4)
+  taxRate    Decimal @default(0) @db.Decimal(7, 4)
+  total      Decimal @db.Decimal(14, 2)
+
+  @@unique([id, tenantId])
+}
+
+model CashSession {
+  id             String            @id @default(uuid())
+  tenantId       String
+  registerId     String
+  register       Register          @relation(fields: [registerId, tenantId], references: [id, tenantId])
+  openedById     String
+  closedById     String?
+  status         CashSessionStatus @default(OPEN)
+  openingAmount  Decimal           @default(0) @db.Decimal(14, 2)
+  expectedAmount Decimal           @default(0) @db.Decimal(14, 2)
+  countedAmount  Decimal?          @db.Decimal(14, 2)
+  difference     Decimal?          @db.Decimal(14, 2)
+  openedAt       DateTime          @default(now())
+  closedAt       DateTime?
+  notes          String?
+  movements      CashMovement[]
+  sales          Sale[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, registerId, status])
+}
+
+model CashMovement {
+  id            String           @id @default(uuid())
+  tenantId      String
+  cashSessionId String
+  cashSession   CashSession      @relation(fields: [cashSessionId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  type          CashMovementType
+  amount        Decimal          @db.Decimal(14, 2)
+  referenceType String?
+  referenceId   String?
+  description   String?
+  createdById   String?
+  createdAt     DateTime         @default(now())
+
+  @@unique([id, tenantId])
+  @@index([tenantId, cashSessionId])
+}
+
+model Expense {
+  id            String   @id @default(uuid())
+  tenantId      String
+  branchId      String
+  branch        Branch   @relation(fields: [branchId, tenantId], references: [id, tenantId])
+  cashSessionId String?
+  category      String
+  description   String
+  amount        Decimal  @db.Decimal(14, 2)
+  paymentMethod PaymentMethod @default(CASH)
+  expenseDate   DateTime @default(now())
+  createdById   String?
+  createdAt     DateTime @default(now())
+
+  @@unique([id, tenantId])
+  @@index([tenantId, expenseDate])
+}
+
+model Receivable {
+  id             String           @id @default(uuid())
+  tenantId       String
+  customerId     String
+  customer       Customer         @relation(fields: [customerId, tenantId], references: [id, tenantId])
+  saleId         String
+  sale           Sale             @relation(fields: [saleId, tenantId], references: [id, tenantId])
+  originalAmount Decimal          @db.Decimal(14, 2)
+  paidAmount     Decimal          @default(0) @db.Decimal(14, 2)
+  balance        Decimal          @db.Decimal(14, 2)
+  dueDate        DateTime?
+  status         ReceivableStatus @default(OPEN)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  payments       ReceivablePayment[]
+
+  @@unique([id, tenantId])
+  @@unique([saleId, tenantId])
+  @@index([tenantId, status])
+}
+
+model ReceivablePayment {
+  id            String        @id @default(uuid())
+  tenantId      String
+  receivableId  String
+  receivable    Receivable    @relation(fields: [receivableId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  amount        Decimal       @db.Decimal(14, 2)
+  method        PaymentMethod @default(CASH)
+  reference     String?
+  createdById   String?
+  createdAt     DateTime      @default(now())
+
+  @@unique([id, tenantId])
+  @@index([tenantId, receivableId])
+}
+
+model RestaurantArea {
+  id        String   @id @default(uuid())
+  tenantId  String
+  branchId  String
+  branch    Branch   @relation(fields: [branchId, tenantId], references: [id, tenantId])
+  name      String
+  sort      Int      @default(0)
+  active    Boolean  @default(true)
+  tables    RestaurantTable[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, branchId])
+}
+
+model RestaurantTable {
+  id        String      @id @default(uuid())
+  tenantId  String
+  areaId    String
+  area      RestaurantArea @relation(fields: [areaId, tenantId], references: [id, tenantId])
+  name      String
+  seats     Int         @default(4)
+  status    TableStatus @default(FREE)
+  currentOrderId String?
+  active    Boolean     @default(true)
+  orders    RestaurantOrder[]
+
+  @@unique([tenantId, areaId, name])
+  @@unique([id, tenantId])
+  @@index([tenantId, status])
+}
+
+model RestaurantOrder {
+  id            String                @id @default(uuid())
+  tenantId      String
+  branchId      String
+  tableId       String?
+  table         RestaurantTable?      @relation(fields: [tableId, tenantId], references: [id, tenantId])
+  number        String
+  type          RestaurantOrderType   @default(DINE_IN)
+  status        RestaurantOrderStatus @default(OPEN)
+  guestCount    Int                   @default(1)
+  notes         String?
+  subtotal      Decimal               @default(0) @db.Decimal(14, 2)
+  tax           Decimal               @default(0) @db.Decimal(14, 2)
+  total         Decimal               @default(0) @db.Decimal(14, 2)
+  parentOrderId String?
+  parent        RestaurantOrder?      @relation("OrderSplits", fields: [parentOrderId, tenantId], references: [id, tenantId])
+  splits        RestaurantOrder[]     @relation("OrderSplits")
+  saleId        String?
+  openedById    String?
+  openedAt      DateTime              @default(now())
+  closedAt      DateTime?
+  items         OrderItem[]
+
+  @@unique([tenantId, number])
+  @@unique([id, tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, tableId])
+}
+
+model OrderItem {
+  id              String          @id @default(uuid())
+  tenantId        String
+  orderId         String
+  order           RestaurantOrder @relation(fields: [orderId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  productId       String
+  product         Product         @relation(fields: [productId, tenantId], references: [id, tenantId])
+  variantId       String?
+  variant         ProductVariant? @relation(fields: [variantId, tenantId], references: [id, tenantId])
+  name            String
+  quantity        Decimal         @db.Decimal(16, 3)
+  unitPrice       Decimal         @db.Decimal(14, 4)
+  taxRate         Decimal         @default(0) @db.Decimal(7, 4)
+  modifiers       Json            @default("[]")
+  notes           String?
+  status          OrderItemStatus @default(PENDING)
+  lineTotal       Decimal         @db.Decimal(14, 2)
+  inventoryDeducted Boolean       @default(false)
+  createdAt       DateTime        @default(now())
+
+  @@unique([id, tenantId])
+  @@index([tenantId, orderId])
+}
+
+model RecipeIngredient {
+  id                  String  @id @default(uuid())
+  tenantId            String
+  productId           String
+  product             Product @relation("ProductRecipes", fields: [productId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  ingredientProductId String
+  ingredient          Product @relation("IngredientRecipes", fields: [ingredientProductId, tenantId], references: [id, tenantId])
+  quantity            Decimal @db.Decimal(16, 3)
+  unitId              String?
+
+  @@unique([tenantId, productId, ingredientProductId])
+  @@unique([id, tenantId])
+}
+
+model AccountingAccount {
+  id        String      @id @default(uuid())
+  tenantId  String
+  code      String
+  name      String
+  type      AccountType
+  parentCode String?
+  active    Boolean     @default(true)
+  createdAt DateTime    @default(now())
+  lines     JournalLine[]
+
+  @@unique([tenantId, code])
+  @@unique([id, tenantId])
+}
+
+model AccountingPeriod {
+  id        String                @id @default(uuid())
+  tenantId  String
+  name      String
+  startDate DateTime
+  endDate   DateTime
+  status    AccountingPeriodStatus @default(OPEN)
+  closedAt  DateTime?
+  closedById String?
+  entries   JournalEntry[]
+
+  @@unique([tenantId, name])
+  @@unique([id, tenantId])
+  @@index([tenantId, status])
+}
+
+model JournalEntry {
+  id           String        @id @default(uuid())
+  tenantId     String
+  periodId     String
+  period       AccountingPeriod @relation(fields: [periodId, tenantId], references: [id, tenantId])
+  number       String
+  date         DateTime
+  description  String
+  sourceType   String
+  sourceId     String?
+  status       JournalStatus @default(POSTED)
+  reversalOfId String?
+  reversalOf   JournalEntry? @relation("EntryReversal", fields: [reversalOfId, tenantId], references: [id, tenantId])
+  reversedBy   JournalEntry? @relation("EntryReversal")
+  createdById  String?
+  createdAt    DateTime      @default(now())
+  lines        JournalLine[]
+
+  @@unique([tenantId, number])
+  @@unique([id, tenantId])
+  @@unique([reversalOfId, tenantId])
+  @@index([tenantId, date])
+}
+
+model JournalLine {
+  id          String           @id @default(uuid())
+  tenantId    String
+  entryId     String
+  entry       JournalEntry     @relation(fields: [entryId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  accountId   String
+  account     AccountingAccount @relation(fields: [accountId, tenantId], references: [id, tenantId])
+  debit       Decimal          @default(0) @db.Decimal(14, 2)
+  credit      Decimal          @default(0) @db.Decimal(14, 2)
+  description String?
+
+  @@unique([id, tenantId])
+  @@index([tenantId, accountId])
+}
+
+model AccountingConfig {
+  id        String   @id @default(uuid())
+  tenantId  String   @unique
+  enabled   Boolean  @default(false)
+  accounts  Json     @default("{}")
+  updatedAt DateTime @updatedAt
+}
+
+model DocumentSequence {
+  id       String @id @default(uuid())
+  tenantId String
+  scope    String
+  value    Int    @default(0)
+
+  @@unique([tenantId, scope])
+}
+
+model IdempotencyRecord {
+  id        String   @id @default(uuid())
+  tenantId  String
+  scope     String
+  key       String
+  response  Json?
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, scope, key])
+  @@index([tenantId, createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  tenantId   String
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  reason     String?
+  before     Json?
+  after      Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, entityType, entityId])
+}
+
+model FiscalDocument {
+  id          String              @id @default(uuid())
+  tenantId    String
+  saleId      String
+  sale        Sale                @relation(fields: [saleId, tenantId], references: [id, tenantId])
+  provider    String
+  mode        IntegrationMode     @default(TEST)
+  status      FiscalDocumentStatus @default(PENDING)
+  reference   String?
+  cufe        String?
+  error       String?
+  attempts    Int                 @default(0)
+  payload     Json?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@unique([tenantId, saleId, provider])
+  @@index([tenantId, status])
+}
+
+model OnboardingTask {
+  id        String   @id @default(uuid())
+  tenantId  String
+  key       String
+  completed Boolean  @default(false)
+  completedAt DateTime?
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, key])
+}
+
+model SystemSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
