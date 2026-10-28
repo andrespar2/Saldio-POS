@@ -21,10 +21,10 @@ Ejecutados el 2026-10-28:
 | Compartida | `npm run test -w @saldio/shared` | 7 pruebas aprobadas (cálculos, acceso, reparto). |
 | Web | `npm test -w @saldio/web` | 3 pruebas aprobadas. |
 | API unitarias | `npm run test -w @saldio/api` | 8 aprobadas (scrypt, políticas, tokens, AES, importes). |
-| Integración PostgreSQL real | `npm run test:integration` | **11/11 aprobadas** en 58 s. |
-| E2E público | `npx playwright test` | **3/3 aprobadas** en 47 s. |
+| Integración PostgreSQL real | `npm run test:integration` | **12/12 aprobadas** en 76 s. |
+| E2E público | `npx playwright test` | **3/3 aprobadas**. |
 | Typecheck | `npm run typecheck` | Sin errores. |
-| Build | `npm run build` | API y web compiladas. |
+| Build | `npm run build` | API y web compiladas; división por módulos. |
 
 ### Cobertura funcional de integración
 
@@ -35,14 +35,15 @@ Ejecutados el 2026-10-28:
 5. Crédito, abono, devolución parcial y actualización de cartera.
 6. Dos cajeros compitiendo por la última unidad (201/409).
 7. Suspensión con revocación de sesiones, bloqueo comprensible, reactivación y vencimiento temporal.
-8. Restaurante: comanda, cocina, cobro sin doble descuento y separación de cuentas.
-9. Contabilidad: venta contabilizada, asiento desequilibrado rechazado y balance cuadrado.
-10. Recuperación con enlace de un solo uso y revocación.
-11. Webhook firmado, evento duplicado y firma inválida.
+8. Sesión de soporte de solo lectura y revocación.
+9. Restaurante: comanda, cocina, cobro sin doble descuento y separación de cuentas.
+10. Contabilidad: venta contabilizada, asiento desequilibrado rechazado y balance cuadrado.
+11. Recuperación con enlace de un solo uso y revocación.
+12. Webhook firmado, evento duplicado y firma inválida.
 
 ## Rendimiento de catálogo
 
-Se cargaron **10.000 productos** en una tienda de prueba (más el producto original). Medición contra la API local, 20 solicitudes por escenario, después de calentamiento:
+Se cargaron **10.000 productos** en una tienda de prueba (más el producto original). Medición contra la API local, 20 solicitudes, después de calentamiento:
 
 | Operación | Promedio | Mínimo | Máximo |
 |---|---:|---:|---:|
@@ -55,12 +56,33 @@ La base se ejecutó en el mismo equipo, sin latencia de red. Estas cifras no son
 
 ## Pruebas manuales adicionales
 
-- Instalador NSIS: instalación silenciosa, archivos, lanzamiento del `.exe`, desinstalación.
+- Instalador NSIS: instalación silenciosa, archivos, lanzamiento del `.exe`, desinstalación y actualización conservando configuración.
 - Comprobante PDF 58/80/A4 y vista HTML.
 - Cambio de tema claro/oscuro/sistema y acento.
 - Venta desde la UI con efectivo, cambio y reimpresión.
 - Verificación de que el instalador no contiene `.env`, credenciales ni base de datos.
 - Firma Authenticode: **NotSigned** (sin certificado).
+
+## Respaldo y restauración
+
+Se ejecutó `node scripts/test-backup-restore.mjs` con PostgreSQL 18 local:
+
+- `pg_dump --format=custom --no-owner --no-privileges`.
+- Restauración en una base temporal nueva.
+- Verificación: 1 tienda, 2 ventas, 10.001 productos y 48 políticas RLS presentes.
+- La base temporal se eliminó al finalizar.
+
+El procedimiento exacto de producción está en [respaldo-recuperacion.md](respaldo-recuperacion.md).
+
+## Instalador Windows
+
+- Instalación silenciosa NSIS en un directorio temporal: exit 0.
+- Ejecutable instalado y lanzado; la depuración confirmó `saldio://app/index.html#/app` tras iniciar sesión.
+- Login desde la aplicación instalada y dashboard cargado.
+- Firma Authenticode: **NotSigned**.
+- Actualización reinstalando el mismo paquete: configuración de API conservada en `%APPDATA%\Saldio POS`.
+- Desinstalación silenciosa: exit 0; directorio de instalación eliminado; datos de usuario preservados por diseño.
+- SHA-256 del instalador publicado: `3d34d6db3693bd4e1764e5cd483e80415ac590b20cc17050772e8d0b6e70f0f4`.
 
 ## Riesgos no cubiertos
 
@@ -76,26 +98,8 @@ La base se ejecutó en el mismo equipo, sin latencia de red. Estas cifras no son
 npm run test
 npm run test:integration
 npm run test:e2e
+npm run typecheck
 node scripts/perf-seed.mjs
 ```
 
 `scripts/perf-seed.mjs` es solo para desarrollo. No ejecutar en producción.
-
-## Respaldo y restauraci�n
-
-Se ejecut� `node scripts/test-backup-restore.mjs` con PostgreSQL 18 local:
-
-- `pg_dump --format=custom --no-owner --no-privileges`.
-- Restauraci�n en una base temporal nueva.
-- Verificaci�n: 1 tienda, 2 ventas, 10.001 productos y 48 pol�ticas RLS presentes.
-- La base temporal se elimin� al finalizar.
-
-El procedimiento exacto de producci�n est� en [respaldo-recuperacion.md](respaldo-recuperacion.md).
-
-## Instalador Windows
-
-- Instalaci�n silenciosa NSIS en un directorio temporal: exit 0.
-- Ejecutable instalado y lanzado; `/json` de depuraci�n confirm� `saldio://app/index.html#/login`.
-- Login desde la aplicaci�n instalada y dashboard cargado.
-- Firma Authenticode: **NotSigned**.
-- Desinstalaci�n silenciosa: exit 0; directorio de instalaci�n eliminado; acceso directo eliminado.
