@@ -56,3 +56,13 @@ Esta beta es funcional en los flujos documentados, pero no es un producto termin
 - La polÃ­tica de tratamiento de datos es aceptada en el registro, pero el texto legal definitivo debe ser revisado por el propietario.
 - Los logos son opcionales y se validan por contenido; no hay antivirus.
 - El correo sin SMTP queda en bandeja de salida y no se entrega.
+
+## Auditoría de dependencias (2026-10-28)
+
+`npm audit --omit=dev` reportó 7 avisos transitivos (5 altos, 2 moderados) en la fecha de la beta:
+
+- `multer@2.4.0` (alto, DoS por fileFilter asíncrono). Se usa solo en la subida de logo, con límite de 2 MB, un archivo y validación de firma. La corrección estable requiere actualizar NestJS 12; se planifica para la siguiente beta.
+- `js-yaml@5.3.0` (moderado) transitivo de Swagger. No se procesa YAML enviado por usuarios; el riesgo se reduce al entorno de documentación.
+- `deepmerge-ts@7.1.5` (alto) transitivo de la CLI de Prisma. Es herramienta de desarrollo/migraciones, no una ruta de entrada de la API en ejecución.
+
+No se aplicaron `overrides` forzados porque npm no los materializó y podían romper herramientas de migración. La actualización coordinada de NestJS/Prisma queda como tarea de la siguiente fase. No se declara la ausencia de vulnerabilidades.
