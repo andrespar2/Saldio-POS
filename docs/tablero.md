@@ -20,7 +20,7 @@ Estados: **Pendiente**, **En desarrollo**, **En pruebas**, **Bloqueado**, **Term
 | 12. Integraciones fiscales y de pagos | Bloqueado (producción) | Modo prueba implementado; faltan credenciales/contrato/DIAN. |
 | 13. Aplicación Windows e instalador | Terminado | Instalador NSIS x64 generado; sin firma. |
 | 14. Pruebas y seguridad | Terminado (beta) | 8 unitarias API, 11 integración, 3 E2E; limitaciones documentadas. |
-| 15. Documentación y Release | En pruebas | Documentación completa; Release se publica al final del proceso. |
+| 15. Documentación y Release | Terminado | Documentación completa; Release `v0.1.0-beta.1` publicada con instalador y SHA-256 verificado. |
 | 16. Backend central desplegado | Bloqueado | No hay infraestructura/dominio/certificado autorizado. |
 | 17. GitHub Project moderno | Bloqueado | Token sin alcance Projects; alternativa con issues/milestones/tablero. |
 
