@@ -1,0 +1,47 @@
+{
+  "name": "saldio-pos",
+  "version": "0.1.0-beta.1",
+  "private": true,
+  "description": "Saldio POS - plataforma multiempresa de punto de venta y gestion",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @saldio/shared && npm run build -w @saldio/api && npm run build -w @saldio/web",
+    "build:shared": "npm run build -w @saldio/shared",
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm run dev -w @saldio/api\" \"npm run dev -w @saldio/web\"",
+    "dev:db": "node scripts/dev-db.mjs",
+    "db:migrate": "npm run db:migrate -w @saldio/api",
+    "db:generate": "npm run db:generate -w @saldio/api",
+    "db:seed": "npm run db:seed -w @saldio/api",
+    "bootstrap": "npm run bootstrap -w @saldio/api",
+    "test": "npm run test -w @saldio/shared && npm run test -w @saldio/web && npm run test -w @saldio/api",
+    "test:api": "npm run test -w @saldio/api",
+    "test:integration": "node scripts/run-integration-tests.mjs",
+    "test:e2e": "npm run test:e2e -w @saldio/web",
+    "typecheck": "npm run typecheck -w @saldio/shared && npm run typecheck -w @saldio/api && npm run typecheck -w @saldio/web",
+    "desktop:build": "npm run build -w @saldio/web && npm run build -w @saldio/desktop",
+    "desktop:dist": "npm run dist -w @saldio/desktop"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "embedded-postgres": "18.4.0-beta.17",
+    "png-to-ico": "^3.0.2",
+    "sharp": "^0.35.5",
+    "typescript": "5.9.3"
+  },
+  "allowScripts": {
+    "@embedded-postgres/windows-x64@18.4.0-beta.17": true,
+    "@prisma/client@6.19.3": true,
+    "@prisma/engines@6.19.3": true,
+    "esbuild@0.28.2": true,
+    "prisma@6.19.3": true,
+    "@scarf/scarf": false,
+    "electron-winstaller@5.4.0": true
+  }
+}

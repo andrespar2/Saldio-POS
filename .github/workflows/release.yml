@@ -1,0 +1,46 @@
+name: Release beta
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder?schema=public
+      DIRECT_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build:shared
+      - run: npm run build
+      - run: npm run desktop:dist
+      - name: Calcular SHA-256
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem apps/desktop/release/*.exe | Select-Object -First 1
+          $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
+          "$hash  $($exe.Name)" | Out-File apps/desktop/release/SHA256SUMS.txt -Encoding ascii
+          Write-Output "SHA256=$hash"
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Saldio POS ${{ github.ref_name }} (beta)
+          draft: false
+          prerelease: true
+          generate_release_notes: false
+          body_path: docs/release-notes-template.md
+          files: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/SHA256SUMS.txt

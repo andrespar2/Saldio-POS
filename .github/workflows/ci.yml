@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: saldio
+          POSTGRES_PASSWORD: saldio
+          POSTGRES_DB: saldio_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U saldio -d saldio_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://saldio:saldio@localhost:5432/saldio_test?schema=public
+      DIRECT_URL: postgresql://saldio:saldio@localhost:5432/saldio_test?schema=public
+      NODE_ENV: test
+      TEST_DATABASE_URL: postgresql://saldio:saldio@localhost:5432/saldio_test?schema=public
+      JWT_ACCESS_SECRET: ci-secret-saldio-pos-1234567890-abcdefghijklmnop
+      FILE_SIGNING_SECRET: ci-file-signing-secret-saldio
+      CONFIG_ENCRYPTION_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      PAYMENTS_WEBHOOK_SECRET: ci-webhook-secret
+      STORAGE_DIR: /tmp/saldio-uploads
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build:shared
+      - run: npm run typecheck
+      - run: npm run test -w @saldio/api
+      - run: npm run test -w @saldio/web
+      - run: npm run test:integration
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+      - run: npx playwright test
+        working-directory: apps/web
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: apps/web/test-results
+          if-no-files-found: ignore
+
+  windows-installer:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder?schema=public
+      DIRECT_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build:shared
+      - run: npm run build -w @saldio/web
+      - run: npm run desktop:dist
+      - name: SHA-256 del instalador
+        shell: pwsh
+        run: |
+          Get-ChildItem apps/desktop/release/*.exe | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$hash  $($_.Name)" | Out-File -Append apps/desktop/release/SHA256SUMS.txt -Encoding ascii
+          }
+          Get-Content apps/desktop/release/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: saldio-pos-windows
+          path: |
+            apps/desktop/release/*.exe
+            apps/desktop/release/SHA256SUMS.txt
+          if-no-files-found: error
