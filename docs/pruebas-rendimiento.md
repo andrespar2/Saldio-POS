@@ -21,7 +21,7 @@ Ejecutados el 2026-10-28:
 | Compartida | `npm run test -w @saldio/shared` | 7 pruebas aprobadas (cálculos, acceso, reparto). |
 | Web | `npm test -w @saldio/web` | 3 pruebas aprobadas. |
 | API unitarias | `npm run test -w @saldio/api` | 8 aprobadas (scrypt, políticas, tokens, AES, importes). |
-| Integración PostgreSQL real | `npm run test:integration` | **12/12 aprobadas** en 76 s. |
+| Integración PostgreSQL real | `npm run test:integration` | **13/13 aprobadas** en 66 s (12/12 en el commit de la Release; la prueba de cierre de caja se a�adi� despu�s a `main`). |
 | E2E público | `npx playwright test` | **3/3 aprobadas**. |
 | Typecheck | `npm run typecheck` | Sin errores. |
 | Build | `npm run build` | API y web compiladas; división por módulos. |

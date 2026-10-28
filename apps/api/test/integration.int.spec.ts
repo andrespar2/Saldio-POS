@@ -596,6 +596,28 @@ describe('Saldio POS · integración con PostgreSQL real', () => {
     void setup;
   });
 
+  it('cierra la caja y registra la diferencia de arqueo', async () => {
+    const session = await api()
+      .get(`/api/v1/tenant/cash/sessions/${cashA}`)
+      .set('Authorization', `Bearer ${tokenA}`);
+    expect(session.status).toBe(200);
+    const expected = session.body.movements.reduce(
+      (sum: number, movement: Dict) => sum + Number(movement.amount),
+      0,
+    );
+    const closed = await api()
+      .post(`/api/v1/tenant/cash/${cashA}/close`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ countedAmount: String(expected + 500), notes: 'Diferencia de prueba' });
+    expect(closed.status).toBe(200);
+    expect(closed.body.status).toBe('CLOSED');
+    expect(Number(closed.body.difference)).toBe(500);
+    const sale = await prisma.withTenant({ tenantId: storeA }, () =>
+      prisma.db.sale.count({ where: { tenantId: storeA } }),
+    );
+    expect(sale).toBeGreaterThan(0);
+  });
+
   it('procesa recuperación de cuenta con enlace de un solo uso', async () => {
     const email = `${OWNER_A.username}-${suffix}@example.test`;
     const requested = await api().post('/api/v1/auth/forgot-password').send({ email });
